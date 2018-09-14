@@ -1,3 +1,5 @@
+import Vue from 'vue'
+import Blob from 'blob'
 import * as constants from '@/store/constants'
 import SuggestionContract from '@/contracts/Suggestion.json'
 
@@ -8,13 +10,18 @@ const state = {
   coinbase: null,
   hash: null,
   events: null,
-  user: null
+  user: null,
+  file: null
 }
 
 const actions = {
-  [constants.SUGGESTIONS_INIT]: ({commit}) => {
+  [constants.SUGGESTIONS_INIT]: ({commit, dispatch}) => {
     const abi = SuggestionContract.abi
-    const contractAddress = '0xfdd147d46d7ae3a4b9ec102acec381e53f6d4b95'
+    // Ropsten contact address
+    const contractAddress = '0x11589f14727997Df90f7668f4f095AAC0fA645FE'
+
+    // Local contract address. Depends on Ganache.
+    // const contractAddress = '0xf84d35eb7a124e7821aae2e0a8d61707794e9cea'
     const contract = web3.eth.contract(abi).at(contractAddress)
     commit(constants.SUGGESTIONS_SET_PROPERTY, {property: 'contract', value: contract})
     web3.eth.getCoinbase((error, coinbase) => {
@@ -23,6 +30,11 @@ const actions = {
         contract.isOwner({from: coinbase}, (error, result) => {
           if (error) console.error(error)
           commit(constants.SUGGESTIONS_SET_PROPERTY, {property: 'isOwner', value: result})
+        })
+        contract.getHash({from: coinbase}, (error, hash) => {
+          if (error) console.error(error)
+          commit(constants.SUGGESTIONS_SET_PROPERTY, {property: 'hash', value: hash})
+          dispatch(constants.SUGGESTIONS_GET_FILE, hash)
         })
       }
     })
@@ -62,6 +74,27 @@ const actions = {
         commit(constants.SUGGESTIONS_SET_PROPERTY, {property: 'user', value: result})
       }
     )
+  },
+  [constants.SUGGESTIONS_UPLOAD_FILE]: ({commit, dispatch}, data) => {
+    const {file, name} = data
+    let formData = new FormData()
+    formData.append('file', file)
+    Vue.axios.post('add?pin=false', formData, {headers: {'Content-Type': 'multipart/form-data'}})
+      .then(response => response.data)
+      .then(result => {
+        console.log(result)
+        dispatch(constants.SUGGESTIONS_ADD_USER_SUGGESTION, {name, hash: result.Hash})
+      })
+  },
+  [constants.SUGGESTIONS_GET_FILE]: ({commit, state}, hash) => {
+    Vue.axios.get(`cat?arg=${hash}`, {responseType: 'arraybuffer'})
+      .then(response => response.data)
+      .then(file => {
+        const blob = new Blob([file], {type: 'application/pdf'})
+        const url = window.URL.createObjectURL(blob)
+        window.open(url)
+        commit(constants.SUGGESTIONS_SET_PROPERTY, {property: 'file', value: blob})
+      })
   }
 }
 
